@@ -1,0 +1,139 @@
+services:
+
+  # MySQL for Airflow metadata
+  mysql:
+    image: mysql:latest # 5.7
+    env_file:
+     - ./.env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-airflow}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-airflow}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql/mysql_data:/var/lib/mysql
+    restart: unless-stopped
+
+  # Airflow
+  airflow:
+    build:
+      context: ./airflow
+    env_file:
+     - ./.env
+    container_name: airflow
+    depends_on:
+      - mysql
+    environment:
+      - POSTGRES_CONN_ID=retail_pg_conn
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=mysql+mysqldb://airflow:airflow@mysql/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS=ibra:admin
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/gx:/opt/airflow/gx
+      - ./datasets:/opt/airflow/datasets
+    command: >
+      bash -c "airflow standalone"
+
+    restart: unless-stopped
+
+  # PostgreSQL
+  postgres:
+    image: postgres:latest
+    env_file:
+     - ./.env
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: retail_sales_db
+    ports:
+      - "5432:5432"
+
+  # Apache Superset Service
+  superset:
+    build:
+      context: ./superset # Build from the Dockerfile in the superset directory
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env # Load environment variables from .env file
+    container_name: superset
+    ports:
+      - "8088:8088" # Expose Superset's web UI port
+    environment:
+      # A strong, random secret key is crucial for production environments.
+      # Generate a long, random string for this.
+      SUPERSET_SECRET_KEY: "thisISaSECRET_1234"
+      # Superset's internal metadata database URI
+      # This connects to the 'db' service (PostgreSQL) within the Docker network
+      DATABASE_URL: "postgresql+psycopg2://postgres:postgres@postgres:5432/retail_sales_db"
+      # Flask app name (usually superset)
+      FLASK_APP: superset
+      
+      # Additional Superset configuration (optional)
+      # SUPERSET_WEBSERVER_PORT: 8088 # Default, can be omitted
+      # SUPERSET_ENV: production # Set to production for better performance and security
+      
+    volumes:
+      - superset_data:/app/superset_home # Persistent volume for Superset configuration and data
+      # - ./superset_config.py:/app/pythonpath/superset_config.py # Uncomment if you have a custom config file
+    depends_on:
+      - postgres
+    command: >
+      bash -c "superset db upgrade && \
+               superset fab create-admin --username admin --firstname Superset --lastname Admin --email admin@superset.com --password admin && \
+               superset load_examples && \
+               superset init && \
+               superset run -h 0.0.0.0 -p 8088 --with-threads --reload --debugger"
+      
+    # IMPORTANT: For production, remove --reload and --debugger for security and performance.
+    # The 'admin' password should be changed immediately after first login."
+
+
+  minio:
+    image: minio/minio:latest
+    env_file:
+     - ./.env
+    container_name: minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - ./minio/minio_data:/data
+    restart: always
+
+
+
+  # pgAdmin
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    env_file:
+     - ./.env
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  minio_data:
+  superset_data:
+  pg_data:
+  pgadmin_data:
