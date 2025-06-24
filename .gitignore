@@ -1,3 +1,7 @@
 .venv/
 venv/
 .env
+
+minio/minio_data/.minio.sys
+minio/minio_data/retail
+mysql_data/
