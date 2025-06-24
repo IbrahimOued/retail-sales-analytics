@@ -2,6 +2,14 @@
 venv/
 .env
 
-minio/minio_data/.minio.sys
-minio/minio_data/retail
+# Python cache files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Docker local data
 mysql_data/
+minio/minio_data/.minio.sys
+pg_data/
+superset_data/
+pgadmin_data/

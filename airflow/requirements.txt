@@ -1,0 +1,7 @@
+boto3
+minio
+pandas
+python-dotenv
+sqlalchemy
+polars
+great-expectations
